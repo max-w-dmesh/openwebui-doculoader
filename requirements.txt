@@ -3,6 +3,7 @@ uvicorn[standard]==0.27.0
 python-multipart==0.0.22
 azure-ai-contentunderstanding==1.1.0
 azure-core>=1.30.0
+markdownify>=0.11.0
 
 # Testing dependencies
 pytest==7.4.4

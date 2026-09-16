@@ -1,8 +1,11 @@
 import os
 import logging
+import re
+import asyncio
 from pathlib import Path
 from typing import Optional
 
+from markdownify import markdownify
 from fastapi import FastAPI, HTTPException, Request, Header
 from fastapi.responses import JSONResponse
 from azure.ai.contentunderstanding import ContentUnderstandingClient
@@ -49,6 +52,22 @@ def get_azure_client() -> ContentUnderstandingClient:
     )
 
 
+def convert_html_tables_in_text(text: str) -> str:
+    """
+    Finds HTML tables in Markdown text and converts them to Markdown pipe tables.
+    """
+    if "<table" not in text.lower():
+        return text
+        
+    table_pattern = re.compile(r'<table.*?>.*?</table>', re.IGNORECASE | re.DOTALL)
+    
+    def table_replacer(match):
+        table_html = match.group(0)
+        return markdownify(table_html)
+        
+    return table_pattern.sub(table_replacer, text)
+
+
 def extract_text_from_pdf_bytes(pdf_bytes: bytes, content_type: str = "application/pdf") -> str:
     """
     Extract structured markdown text from PDF bytes using Azure AI Content Understanding.
@@ -78,6 +97,8 @@ def extract_text_from_pdf_bytes(pdf_bytes: bytes, content_type: str = "applicati
                     extracted_parts.append(content.markdown)
         
         final_text = "\n\n".join(extracted_parts)
+        final_text = convert_html_tables_in_text(final_text)
+        
         logger.info(f"Successfully extracted {len(final_text)} characters")
         return final_text
         
@@ -166,9 +187,10 @@ async def process_document(
             detail="Only PDF files are supported"
         )
     
-    extracted_text = extract_text_from_pdf_bytes(
+    extracted_text = await asyncio.to_thread(
+        extract_text_from_pdf_bytes,
         pdf_data,
-        content_type=content_type or "application/pdf"
+        content_type or "application/pdf"
     )
     
     return JSONResponse(
